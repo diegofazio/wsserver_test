@@ -1,162 +1,181 @@
 <html lang="en">
-   <head>  
-		<meta charset="utf-8">
-		<meta http-equiv="X-UA-Compatible" content="IE=edge">
-		<meta name="viewport" content="width=device-width, initial-scale=1"> 
-		<title>Harbour websocket server</title>			
-   </head>
-   
-   <style>
-   
-		.myhead {			
-			padding: 5px;
-			background-color: white;
-			margin-bottom: 20px;
-		}
 
-		.myhead > span {
-			font-size: 25px;
-			font-family: times, Times New Roman, times-roman, georgia, serif;
-			font-size: 28px;
-			line-height: 40px;
-			letter-spacing: -1px;color: #444;			
-		}
+<head>
+   <meta charset="utf-8">
+   <meta http-equiv="X-UA-Compatible" content="IE=edge">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <title>Harbour websocket server</title>
+</head>
 
-		#mylogo {
-			width: 130px;
-			margin-left: 10px;
-			margin-right: 10px;
-			vertical-align: middle;
-		}
-		
-		#harbour {
-			height: 180px;
-			margin-bottom: 50px;
-		}
-		
-		#content {
-			text-align: center;
-		}
+<style>
+   .myhead {
+      padding: 5px;
+      background-color: white;
+      margin-bottom: 20px;
+   }
 
-		input[type=text], select {
-		  width: 50%;
-		  padding: 12px 20px;
-		  margin: 8px 0;
-		  display: inline-block;
-		  border: 1px solid #ccc;
-		  border-radius: 4px;
-		  box-sizing: border-box;
-		  font-size: 20px;
-		}
+   .myhead>span {
+      font-size: 25px;
+      font-family: times, Times New Roman, times-roman, georgia, serif;
+      font-size: 28px;
+      line-height: 40px;
+      letter-spacing: -1px;
+      color: #444;
+   }
 
-		.btn {
-		  width: 15%;
-		  background-color: #4CAF50;
-		  color: white;
-		  padding: 13px 20px;
-		  margin: 8px 0;
-		  border: none;
-		  border-radius: 4px;
-		  cursor: pointer;
-		  margin-top: 30px;
-		  margin-bottom: 20px;
-		  margin-right: 10px;
-		  margin-left: 10px;
-		  font-size: 20px;
-		}
+   #mylogo {
+      width: 130px;
+      margin-left: 10px;
+      margin-right: 10px;
+      vertical-align: middle;
+   }
 
-		#btn:hover {
-		  background-color: #45a049;
-		}		
-		
-   </style>
-   
-   <body>
-		<div class="myhead">
-			<span>Harbour websocket server - client demo</span>			
-			<hr>
-		</div>
-		
-		<div id="content">
-			<a href='https://harbour.github.io'>
-			   <img id="harbour" title='The Harbour project' src="https://github.com/FiveTechSoft/screenshots/blob/master/harbour.png?raw=true"></a><br>
-			<input type="text" id="msg"><br>
-			<button class="btn" onclick="Send( document.getElementById( 'msg' ).value )">Send</button>
-			<button class="btn" onclick="SendFile()">Send file</button>
-			<button class="btn" id='onoff' onclick='OnOff()'>Disconnect</button>
-			<button class="btn" onclick="Clear()">Clear</button>
-			<br><a style='font-size:20' href="https://fivetechsoft.github.io/mod_harbour/">modharbour.org</a>
-			<br><br><textarea id="output" rows="20" cols="140"></textarea>
-		</div>
-		
-      <script>
-		 var socket;
-		 
-		 Connect();
+   #harbour {
+      height: 180px;
+      margin-bottom: 50px;
+   }
 
-         function Send( cMsg ) {
-			if( socket == null )
-			   Connect();
-			
-			socket.send( cMsg );
-		 }
-		 
-         function OnOff() {
-			 if( socket == null )
-				Connect();
-			 else
-			    Send( 'exit' ); 	
-		 }
+   #content {
+      text-align: center;
+   }
 
-		 function Connect() {
-			socket = new WebSocket( "ws://localhost:9000" );
+   input[type=text],
+   select {
+      width: 50%;
+      padding: 12px 20px;
+      margin: 8px 0;
+      display: inline-block;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 20px;
+   }
 
-			socket.onopen = function( e ) {
-				document.getElementById( 'output' ).innerHTML = "Connection established\n";
-				socket.send( "Harbour websocket server" );
-				document.getElementById( 'onoff' ).innerHTML = 'Disconnect';
-			};
+   .btn {
+      width: 15%;
+      background-color: #4CAF50;
+      color: white;
+      padding: 13px 20px;
+      margin: 8px 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 30px;
+      margin-bottom: 20px;
+      margin-right: 10px;
+      margin-left: 10px;
+      font-size: 20px;
+   }
 
-			socket.onmessage = function( event ) {
-				document.getElementById( 'output' ).innerHTML += event.data + '\n';
-			};
+   #btn:hover {
+      background-color: #45a049;
+   }
+</style>
 
-			socket.onclose = function( event ) {
-				document.getElementById( 'output' ).innerHTML += event.code + '\n';
-				document.getElementById( 'output' ).innerHTML += event.reason + '\n';
-				document.getElementById( 'output' ).innerHTML += ( ! event.wasClean ? "": "not " ) + 
-				                                                   "clean exit" + '\n';
-				socket = null;
-				document.getElementById( 'onoff' ).innerHTML = 'Connect';
-			};
+<body>
+   <div class="myhead">
+      <span>Harbour websocket server - client demo</span>
+      <hr>
+   </div>
 
-			socket.onerror = function(error) {
-				alert( 'Please run wsserver.exe first on your computer' ); // `[error] ${error.message}`);
-				document.getElementById( 'msg' ).innerHTML = 'Disconnect';
-			};			
-		 }
+   <div id="content">
+      <a href='https://harbour.github.io'>
+         <img id="harbour" title='The Harbour project'
+            src="https://github.com/FiveTechSoft/screenshots/blob/master/harbour.png?raw=true"></a><br>
+      Usuario:<input type="text" id="user" value="Usuario1"><br>
+      Mensaje:<input type="text" id="msg" onkeyup="Typing()"><br>
+      <button class="btn" id='onoff' onclick='OnOff()'>Connect</button><br>
+      Status:<div id="status"></div>
+      <div id="typing"></div>      
+   </div>
 
-		 function SendFile() { 
-			var filePicker = document.createElement( "input" );
-			filePicker.type   = "file";
-        	filePicker.accept = ".*";
-        	filePicker.style.visibility = "hidden";
-        	filePicker.onchange = function( evt ) { 
-           		var reader = new FileReader();
-           		var file   = evt.target.files[ 0 ];
-           		reader.readAsDataURL( file ); 
-           		reader.onload = function( e ) {
-					Send( e.target.result );   
-	           }
-         	};
-        	filePicker.click(); 
-		} 
-		  
-		function Clear() {
-			document.getElementById( 'msg' ).value = '';
-			document.getElementById( 'output' ).innerHTML = '';
-		}
+   <script>
+      var socket;
 
-      </script>
-   </body>
+      function OnOff() {
+         if (socket == null)
+            Connect();
+         else
+            ws_send('exit');
+      }
+
+      function Connect() {
+         socket = new WebSocket("ws://localhost:9000");
+
+         socket.onopen = function (e) {
+            document.getElementById('status').innerHTML = "Connection established\n";
+            document.getElementById('user').disabled = true;
+            ws_send("login", document.getElementById('user').value)
+            
+            document.getElementById('onoff').innerHTML = 'Disconnect';
+         };
+
+         socket.onmessage = function (event) {
+            console.log(event.data);
+            var oResp = JSON.parse(event.data);
+            if (oResp['type'] == 'updusersdata') {
+               document.getElementById('users').innerHTML = oResp['users'];
+               document.getElementById("typing").innerHTML = oResp['typing'];
+            }
+         };
+
+         socket.onclose = function (event) {
+            document.getElementById('status').innerHTML += event.code + '\n';
+            document.getElementById('status').innerHTML += event.reason + '\n';
+            document.getElementById('status').innerHTML += (!event.wasClean ? "" : "not ") +
+               "clean exit" + '\n';
+            socket = null;
+            document.getElementById('onoff').innerHTML = 'Connect';
+         };
+
+         socket.onerror = function (error) {
+            alert('Please run wsserver.exe first on your computer'); // `[error] ${error.message}`);
+            document.getElementById('status').innerHTML = 'Disconnect';
+         };
+      }
+
+      function ws_send(type, data) {
+         if (socket) {
+            var msg = {
+               value: data,
+               type: type,
+               user: document.getElementById('user').value
+            };
+            socket.send(JSON.stringify(msg));
+         };
+      };
+
+      function Typing() {
+         var Text = document.getElementById('msg').value;
+         if (Text != '') {
+            ws_send('typingstate', 1)
+         } else {
+            ws_send('typingstate', 0)
+         };
+         return true;
+      }
+
+      function SendFile() {
+         var filePicker = document.createElement("input");
+         filePicker.type = "file";
+         filePicker.accept = ".*";
+         filePicker.style.visibility = "hidden";
+         filePicker.onchange = function (evt) {
+            var reader = new FileReader();
+            var file = evt.target.files[0];
+            reader.readAsDataURL(file);
+            reader.onload = function (e) {
+               Send(e.target.result);
+            }
+         };
+         filePicker.click();
+      }
+
+      function Clear() {
+         document.getElementById('status').innerHTML = '';
+      }
+
+   </script>
+</body>
+
 </html>

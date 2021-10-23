@@ -16,216 +16,222 @@
 #define OPC_PING   0x09
 #define OPC_PONG   0x0A
 
-//----------------------------------------------------------------//
+STATIC hUsers := { => }
 
-function Main()
+// ----------------------------------------------------------------//
 
-   local hListen, hSocket
+FUNCTION Main()
 
-   if ! File( "log.dbf" )
-      DbCreate( "log.dbf", { { "COMPLETE",  "L",  1, 0 },;
-                             { "OPCODE",    "N",  3, 0 },;
-                             { "MASKED",    "L",  1, 0 },;
-                             { "FRLENGTH",  "N",  6, 0 },;
-                             { "PAYLENGTH", "N", 10, 0 },;
-                             { "MASKKEY",   "C",  4, 0 },;
-                             { "DATA",      "M", 10, 0 },;
-                             { "HEADER",    "C", 50, 0 } } )
-   endif
+   LOCAL hListen, hSocket
 
-   if ! hb_mtvm()
+   IF ! File( "log.dbf" )
+      dbCreate( "log.dbf", { { "COMPLETE",  "L",  1, 0 }, ;
+         { "OPCODE",    "N",  3, 0 }, ;
+         { "MASKED",    "L",  1, 0 }, ;
+         { "FRLENGTH",  "N",  6, 0 }, ;
+         { "PAYLENGTH", "N", 10, 0 }, ;
+         { "MASKKEY",   "C",  4, 0 }, ;
+         { "DATA",      "M", 10, 0 }, ;
+         { "HEADER",    "C", 50, 0 } } )
+   ENDIF
+
+   IF ! hb_mtvm()
       ? "multithread support required"
-      return
-   endif
+      RETURN
+   ENDIF
 
-   if Empty( hListen := hb_socketOpen( HB_SOCKET_AF_INET, HB_SOCKET_PT_STREAM, HB_SOCKET_IPPROTO_TCP ) )
+   IF Empty( hListen := hb_socketOpen( HB_SOCKET_AF_INET, HB_SOCKET_PT_STREAM, HB_SOCKET_IPPROTO_TCP ) )
       ? "socket create error " + hb_ntos( hb_socketGetError() )
-   endif
+   ENDIF
 
-   if ! hb_socketBind( hListen, { HB_SOCKET_AF_INET, ADDRESS, PORT } )
+   IF ! hb_socketBind( hListen, { HB_SOCKET_AF_INET, ADDRESS, PORT } )
       ? "bind error " + hb_ntos( hb_socketGetError() )
-   endif
+   ENDIF
 
-   if ! hb_socketListen( hListen )
+   IF ! hb_socketListen( hListen )
       ? "listen error " + hb_ntos( hb_socketGetError() )
-   endif
+   ENDIF
 
    ? "Harbour websockets server running on port " + hb_ntos( PORT )
 
-   while .T.
-      if Empty( hSocket := hb_socketAccept( hListen,, TIMEOUT ) )
-         if hb_socketGetError() == HB_SOCKET_ERR_TIMEOUT
+   WHILE .T.
+      IF Empty( hSocket := hb_socketAccept( hListen,, TIMEOUT ) )
+         IF hb_socketGetError() == HB_SOCKET_ERR_TIMEOUT
             // ? "loop"
          ELSE
             ? "accept error " + hb_ntos( hb_socketGetError() )
-         endif
+         ENDIF
       ELSE
          ? "accept socket request"
          hb_threadDetach( hb_threadStart( @ServeClient(), hSocket ) )
-      endif
-      if Inkey() == K_ESC
+      ENDIF
+      IF Inkey() == K_ESC
          ? "quitting - esc pressed"
          EXIT
-      endif
-   end
+      ENDIF
+   END
 
    ? "close listening socket"
 
    hb_socketShutdown( hListen )
    hb_socketClose( hListen )
 
-return nil
+RETURN NIL
 
-//----------------------------------------------------------------//
+// ----------------------------------------------------------------//
 
-function HandShaking( hSocket, cHeaders )   
+FUNCTION HandShaking( hSocket, cHeaders )
 
-   local aHeaders := hb_ATokens( cHeaders, CRLF )
-   local hHeaders := {=>}, cLine 
-   local cAnswer
+   LOCAL aHeaders := hb_ATokens( cHeaders, CRLF )
+   LOCAL hHeaders := { => }, cLine
+   LOCAL cAnswer
 
-   for each cLine in aHeaders
+   FOR EACH cLine in aHeaders
       hHeaders[ SubStr( cLine, 1, At( ":", cLine ) - 1 ) ] = SubStr( cLine, At( ":", cLine ) + 2 )
-   next
+   NEXT
 
    cAnswer = "HTTP/1.1 101 Web Socket Protocol Handshake" + CRLF + ;
-             "Upgrade: websocket" + CRLF + ;
-             "Connection: Upgrade" + CRLF + ;
-             "WebSocket-Origin: " + ADDRESS + CRLF + ;
-             "WebSocket-Location: ws://" + ADDRESS + ":" + hb_ntos( PORT ) + CRLF + ;
-             "Sec-WebSocket-Accept: " + ;
-             hb_Base64Encode( hb_SHA1( hHeaders[ "Sec-WebSocket-Key" ] + ;
-                              "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", .T. ) ) + CRLF + CRLF
+      "Upgrade: websocket" + CRLF + ;
+      "Connection: Upgrade" + CRLF + ;
+      "WebSocket-Origin: " + ADDRESS + CRLF + ;
+      "WebSocket-Location: ws://" + ADDRESS + ":" + hb_ntos( PORT ) + CRLF + ;
+      "Sec-WebSocket-Accept: " + ;
+      hb_base64Encode( hb_SHA1( hHeaders[ "Sec-WebSocket-Key" ] + ;
+      "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", .T. ) ) + CRLF + CRLF
 
-   hb_socketSend( hSocket, cAnswer ) 
+   hb_socketSend( hSocket, cAnswer )
 
-return nil   
+RETURN NIL
 
-//----------------------------------------------------------------//
+// ----------------------------------------------------------------//
 
-function Unmask( cBytes, nOpcode )
-   
-   local lComplete := hb_bitTest( hb_bPeek( cBytes, 1 ), 7 )
-   local nFrameLen := hb_bitAnd( hb_bPeek( cBytes, 2 ), 127 ) 
-   local nLength, cMask, cData, cChar, cHeader := ""
+FUNCTION Unmask( cBytes, nOpcode )
 
-   nOpcode := hb_bitAnd( hb_bPeek( cBytes, 1 ), 15 )
+   LOCAL lComplete := hb_bitTest( hb_BPeek( cBytes, 1 ), 7 )
+   LOCAL nFrameLen := hb_bitAnd( hb_BPeek( cBytes, 2 ), 127 )
+   LOCAL nLength, cMask, cData, cChar, cHeader := ""
 
-   do case
-      case nFrameLen <= 125
-         nLength = nFrameLen
-         cMask = SubStr( cBytes, 3, 4 )
-         cData = SubStr( cBytes, 7 )
+   nOpcode := hb_bitAnd( hb_BPeek( cBytes, 1 ), 15 )
 
-      case nFrameLen = 126
-         nLength = ( hb_bPeek( cBytes, 3 ) * 256 ) + hb_bPeek( cBytes, 4 )
-         cMask   = SubStr( cBytes, 5, 4 )
-         cData   = SubStr( cBytes, 9 )
+   DO CASE
+   CASE nFrameLen <= 125
+      nLength = nFrameLen
+      cMask = SubStr( cBytes, 3, 4 )
+      cData = SubStr( cBytes, 7 )
 
-      case nFrameLen = 127  
-         nLength = NetworkBin2ULL( SubStr( cBytes, 3, 8 ) )  
-         cMask   = SubStr( cBytes, 11, 4 )
-         cData   = SubStr( cBytes, 15 )
-   endcase 
+   CASE nFrameLen = 126
+      nLength = ( hb_BPeek( cBytes, 3 ) * 256 ) + hb_BPeek( cBytes, 4 )
+      cMask   = SubStr( cBytes, 5, 4 )
+      cData   = SubStr( cBytes, 9 )
+
+   CASE nFrameLen = 127
+      nLength = NetworkBin2ULL( SubStr( cBytes, 3, 8 ) )
+      cMask   = SubStr( cBytes, 11, 4 )
+      cData   = SubStr( cBytes, 15 )
+   ENDCASE
 
    cBytes = ""
-   for each cChar in cData
-      cBytes += Chr( hb_bitXor( Asc( cChar ),;
-                     hb_bPeek( cMask, ( ( cChar:__enumIndex() - 1 ) % 4 ) + 1 ) ) ) 
-   next   
+   FOR EACH cChar in cData
+      cBytes += Chr( hb_bitXor( Asc( cChar ), ;
+         hb_BPeek( cMask, ( ( cChar:__enumIndex() - 1 ) % 4 ) + 1 ) ) )
+   NEXT
 
-   do case
-      case Left( cBytes, Len( FILEHEADER ) ) == FILEHEADER
-         cBytes = hb_base64Decode( SubStr( cBytes, Len( FILEHEADER ) + 1 ) )
-         cHeader = FILEHEADER 
+   DO CASE
+   CASE Left( cBytes, Len( FILEHEADER ) ) == FILEHEADER
+      cBytes = hb_base64Decode( SubStr( cBytes, Len( FILEHEADER ) + 1 ) )
+      cHeader = FILEHEADER
 
-      case Left( cBytes, Len( JSONHEADER ) ) == JSONHEADER
-         cBytes = hb_base64Decode( SubStr( cBytes, Len( JSONHEADER ) + 1 ) )
-         cHeader = JSONHEADER
+   CASE Left( cBytes, Len( JSONHEADER ) ) == JSONHEADER
+      cBytes = hb_base64Decode( SubStr( cBytes, Len( JSONHEADER ) + 1 ) )
+      cHeader = JSONHEADER
 
-      case Left( cBytes, Len( HTMLHEADER ) ) == HTMLHEADER
-         cBytes = hb_base64Decode( SubStr( cBytes, Len( HTMLHEADER ) + 1 ) )
-         cheader = HTMLHEADER
-   endcase
+   CASE Left( cBytes, Len( HTMLHEADER ) ) == HTMLHEADER
+      cBytes = hb_base64Decode( SubStr( cBytes, Len( HTMLHEADER ) + 1 ) )
+      cheader = HTMLHEADER
+   ENDCASE
 
    APPEND BLANK
-   if log->( Rlock() )
+   IF log->( RLock() )
       log->complete  := lComplete
       log->opcode    := nOpcode
       log->masked    := .T.
-      log->frlength  := nFrameLen 
+      log->frlength  := nFrameLen
       log->paylength := nLength
       log->maskkey   := cMask
-      log->data      := cBytes
+      log->DATA      := cBytes
       log->header    := cHeader
-      log->( DbUnLock() )
-   endif    
+      log->( dbUnlock() )
+   ENDIF
 
-return cBytes 
+RETURN cBytes
 
-//----------------------------------------------------------------//
+// ----------------------------------------------------------------//
 
-function NetworkULL2Bin( n )
+FUNCTION NetworkULL2Bin( n )
 
-   local nBytesLeft := 64
-   local cBytes := ""
+   LOCAL nBytesLeft := 64
+   LOCAL cBytes := ""
 
-   while nBytesLeft > 0
+   WHILE nBytesLeft > 0
       nBytesLeft -= 8
-      cBytes += Chr( hb_BitAnd( hb_BitShift( n, -nBytesLeft ), 0xFF ) )
-   end
+      cBytes += Chr( hb_bitAnd( hb_bitShift( n, - nBytesLeft ), 0xFF ) )
+   END
 
-return cBytes
+RETURN cBytes
 
-//----------------------------------------------------------------//
+// ----------------------------------------------------------------//
 
-function NetworkBin2ULL( cBytes )
+FUNCTION NetworkBin2ULL( cBytes )
 
-   local cByte, n := 0
-   
-   for each cByte in cBytes
-      n += hb_BitShift( Asc( cByte ), 64 - cByte:__enumIndex() * 8 )
-   next
-   
-return n
+   LOCAL cByte, n := 0
 
-//----------------------------------------------------------------//
+   FOR EACH cByte in cBytes
+      n += hb_bitShift( Asc( cByte ), 64 - cByte:__enumIndex() * 8 )
+   NEXT
 
-function Mask( cText, nOPCode )
+RETURN n
 
-   local nLen := Len( cText ) 
-   local cHeader 
-   local lMsgIsComplete := .T.
-   local nFirstByte := 0
-                  
+// ----------------------------------------------------------------//
+
+FUNCTION Mask( cText, nOPCode )
+
+   LOCAL nLen := Len( cText )
+   LOCAL cHeader
+   LOCAL lMsgIsComplete := .T.
+   LOCAL nFirstByte := 0
+
    hb_default( @nOPCode, OPC_TEXT )
 
-   if lMsgIsComplete
+   IF lMsgIsComplete
       nFirstByte = hb_bitSet( nFirstByte, 7 ) // 1000 0000
-   endif
+   ENDIF
 
    // setting OP code
    nFirstByte := hb_bitOr( nFirstByte, nOPCode )  // 1000 XXXX -> is set
 
-   do case
-      case nLen <= 125
-         cHeader = Chr( nFirstByte ) + Chr( nLen )   
+   DO CASE
+   CASE nLen <= 125
+      cHeader = Chr( nFirstByte ) + Chr( nLen )
 
-      case nLen < 65536
-         cHeader = Chr( nFirstByte ) + Chr( 126 ) + ;
-                   Chr( hb_BitShift( nLen, -8 ) ) + Chr( hb_BitAnd( nLen, 0xFF ) )
-         
-      otherwise 
-         cHeader = Chr( nFirstByte ) + Chr( 127 ) + NetworkULL2Bin( nLen )   
-   endcase
+   CASE nLen < 65536
+      cHeader = Chr( nFirstByte ) + Chr( 126 ) + ;
+         Chr( hb_bitShift( nLen, - 8 ) ) + Chr( hb_bitAnd( nLen, 0xFF ) )
 
-return cHeader + cText   
+   OTHERWISE
+      cHeader = Chr( nFirstByte ) + Chr( 127 ) + NetworkULL2Bin( nLen )
+   ENDCASE
 
-//----------------------------------------------------------------//
+RETURN cHeader + cText
 
-function ServeClient( hSocket )
+// ----------------------------------------------------------------//
 
-   local cRequest, cBuffer := Space( 4096 ), nLen, nOpcode
+FUNCTION ServeClient( hSocket )
+
+   LOCAL cRequest, cBuffer := Space( 4096 ), nLen, nOpcode
+   LOCAL hResp := { => }, hReq := { => }
+   LOCAL cUser := ''
+   LOCAL nMillis := hb_MilliSeconds()
+   LOCAL hUser := { => }
 
    hb_socketRecv( hSocket, @cBuffer,,, 1024 )
    HandShaking( hSocket, RTrim( cBuffer ) )
@@ -234,45 +240,79 @@ function ServeClient( hSocket )
 
    USE log SHARED
 
-   while .T.
+   WHILE .T.
       cRequest = ""
       nLen = 1
 
-      while nLen > 0
+      WHILE nLen > 0
          cBuffer := Space( 4096 )
-         if ( nLen := hb_socketRecv( hSocket, @cBuffer,,, TIMEOUT ) ) > 0  
+         IF ( nLen := hb_socketRecv( hSocket, @cBuffer,,, TIMEOUT ) ) > 0
             cRequest += Left( cBuffer, nLen )
-         else
-            if nLen == -1 .and. hb_socketGetError() == HB_SOCKET_ERR_TIMEOUT
+         ELSE
+            IF nLen == -1 .AND. hb_socketGetError() == HB_SOCKET_ERR_TIMEOUT
                nLen = 0
-            endif
-         endif
-      end
-      
-      if ! Empty( cRequest )
-         cRequest:= UnMask( cRequest, @nOpcode )
-         
-         do case
-            case cRequest == "exit"
-               hb_socketSend( hSocket, Mask( "exiting", OPC_CLOSE ) )   // close handShake
-               
-            case cRequest == "exiting"                                  // client answered to close handShake
-               exit
-               
-            otherwise
-               ? cRequest
-               hb_socketSend( hSocket, Mask( cRequest ) )
-         endcase
-      endif
-   end
+            ENDIF
+         ENDIF
+      END
 
-   ? "close socket"
+      IF ! Empty( cRequest )
+         cRequest := UnMask( cRequest, @nOpcode )
+         hb_jsonDecode( cRequest, @hReq )
 
-   hb_socketShutdown( hSocket )
-   hb_socketClose( hSocket )
+         IF hReq[ 'type' ] == 'login'
+            cUser := hReq[ 'value' ]
+            ? 'user ', cUser, ' connected'
+         ENDIF
 
-   USE
+         IF !Empty( cUser )
+            hUsers[ cUser ][ 'online' ] := .T.
+            hUsers[ cUser ][ 'name' ] := cUser
 
-return nil
+            IF hReq[ 'type' ] == 'typingstate'
+               IF hReq[ 'value' ] == 1
+                  hUsers[ cUser ][ 'typing' ] := .T.
+               ELSE
+                  hUsers[ cUser ][ 'typing' ] := .F.
+               ENDIF
+            ENDIF
 
-//----------------------------------------------------------------//
+            IF (  hb_MilliSeconds() > ( nMillis + 2000 ) )
+               nMillis = hb_MilliSeconds()
+               cHtml1 := ''
+               cHtml2 := ''
+               FOR EACH hUser in hUsers
+                  IF hUser[ 'online' ]
+                     cHtml1 += hUser[ 'name' ] + ' is online<br>'
+                  ENDIF
+                  IF hUser[ 'typing' ]
+                     cHtml2 += hUser[ 'name' ] + ' is typing<br>'
+                  ENDIF
+               NEXT
+               hResp[ 'users' ] = cHtml1
+               hResp[ 'typing' ] = cHtml2
+
+               hb_socketSend( hSocket, Mask( hb_jsonEncode( hResp, .T. ) ) )
+
+               IF hReq[ 'type' ] == 'exit'
+                  hUsers[ cUser ][ 'online' ] := .F.
+                  hb_socketSend( hSocket, Mask( "", OPC_CLOSE ) )   // close handShake
+               ENDIF
+
+            ENDIF
+
+         ENDIF
+      END
+
+      ? "close socket"
+      IF hb_HHasKey( hUsers, hUsers[ cUser ][ 'online' ] )
+         hUsers[ cUser ][ 'online' ] := .F.
+         hUsers[ cUser ][ 'typing' ] := .F.
+      ENDIF
+      hb_socketShutdown( hSocket )
+      hb_socketClose( hSocket )
+
+   END
+
+RETURN NIL
+
+// ----------------------------------------------------------------//
