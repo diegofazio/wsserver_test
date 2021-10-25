@@ -23,13 +23,6 @@
       color: #444;
    }
 
-   #mylogo {
-      width: 130px;
-      margin-left: 10px;
-      margin-right: 10px;
-      vertical-align: middle;
-   }
-
    #harbour {
       height: 180px;
       margin-bottom: 50px;
@@ -79,34 +72,36 @@
    </div>
 
    <div id="content">
-      <a href='https://harbour.github.io'>
-         <img id="harbour" title='The Harbour project'
-            src="https://github.com/FiveTechSoft/screenshots/blob/master/harbour.png?raw=true"></a><br>
-      Usuario:<input type="text" id="user" value="Usuario1"><br>
-      Mensaje:<input type="text" id="msg" onkeyup="Typing()"><br>
+      Usuario:<input type="text" id="user"><br>
+      Mensaje:<input type="text" id="msg" onchange="Typing()"><br>
       <button class="btn" id='onoff' onclick='OnOff()'>Connect</button><br>
       Status:<div id="status"></div>
-      <div id="typing"></div>      
+      <div id="typing"></div>
    </div>
 
    <script>
-      var socket;
+      var socket = null;
+
+      document.getElementById('user').value = Math.random().toString(36).substring(2,7);      
+      document.getElementById('user').disabled = true;
 
       function OnOff() {
-         if (socket == null)
+         if (socket == null) {
             Connect();
-         else
-            ws_send('exit');
+         } else {
+            ws_send('exit',0)
+            document.getElementById('onoff').innerHTML = 'Connect';
+            document.getElementById('status').innerHTML = 'Disconnect';
+            document.getElementById('typing').innerHTML = '';            
+         }
       }
-
+      document.getElementById('status').innerHTML = "Disconnected";
       function Connect() {
          socket = new WebSocket("ws://localhost:9000");
 
          socket.onopen = function (e) {
             document.getElementById('status').innerHTML = "Connection established\n";
-            document.getElementById('user').disabled = true;
-            ws_send("login", document.getElementById('user').value)
-            
+            ws_send("login", 0)
             document.getElementById('onoff').innerHTML = 'Disconnect';
          };
 
@@ -114,23 +109,22 @@
             console.log(event.data);
             var oResp = JSON.parse(event.data);
             if (oResp['type'] == 'updusersdata') {
-               document.getElementById('users').innerHTML = oResp['users'];
+               document.getElementById('status').innerHTML = oResp['users'];
                document.getElementById("typing").innerHTML = oResp['typing'];
             }
          };
 
          socket.onclose = function (event) {
-            document.getElementById('status').innerHTML += event.code + '\n';
-            document.getElementById('status').innerHTML += event.reason + '\n';
-            document.getElementById('status').innerHTML += (!event.wasClean ? "" : "not ") +
-               "clean exit" + '\n';
             socket = null;
             document.getElementById('onoff').innerHTML = 'Connect';
+            document.getElementById('typing').innerHTML = '';
+            document.getElementById('status').innerHTML = "Disconnected";            
          };
 
          socket.onerror = function (error) {
             alert('Please run wsserver.exe first on your computer'); // `[error] ${error.message}`);
             document.getElementById('status').innerHTML = 'Disconnect';
+            document.getElementById('typing').innerHTML = '';
          };
       }
 
@@ -153,26 +147,6 @@
             ws_send('typingstate', 0)
          };
          return true;
-      }
-
-      function SendFile() {
-         var filePicker = document.createElement("input");
-         filePicker.type = "file";
-         filePicker.accept = ".*";
-         filePicker.style.visibility = "hidden";
-         filePicker.onchange = function (evt) {
-            var reader = new FileReader();
-            var file = evt.target.files[0];
-            reader.readAsDataURL(file);
-            reader.onload = function (e) {
-               Send(e.target.result);
-            }
-         };
-         filePicker.click();
-      }
-
-      function Clear() {
-         document.getElementById('status').innerHTML = '';
       }
 
    </script>

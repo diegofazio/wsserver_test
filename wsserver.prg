@@ -16,7 +16,7 @@
 #define OPC_PING   0x09
 #define OPC_PONG   0x0A
 
-STATIC hUsers := { => }
+REQUEST DBFCDX
 
 // ----------------------------------------------------------------//
 
@@ -24,16 +24,16 @@ FUNCTION Main()
 
    LOCAL hListen, hSocket
 
-   IF ! File( "log.dbf" )
-      dbCreate( "log.dbf", { { "COMPLETE",  "L",  1, 0 }, ;
-         { "OPCODE",    "N",  3, 0 }, ;
-         { "MASKED",    "L",  1, 0 }, ;
-         { "FRLENGTH",  "N",  6, 0 }, ;
-         { "PAYLENGTH", "N", 10, 0 }, ;
-         { "MASKKEY",   "C",  4, 0 }, ;
-         { "DATA",      "M", 10, 0 }, ;
-         { "HEADER",    "C", 50, 0 } } )
-   ENDIF
+   hb_FileDelete( "./data/users.dbf" )
+   hb_FileDelete( "./data/users.cdx" )
+
+   dbCreate( "./data/users", ;
+      { { "USER",      "C", 10, 0 }, ;
+      { "CLOGIN",    "C",  1, 0 }, ;
+      { "CACTIVE",   "C",  1, 0 } } )
+
+   dbUseArea( .F., "DBFCDX", "./data/users",, .T. )
+   dbCreateIndex( "./data/users.cdx", "USER" )
 
    IF ! hb_mtvm()
       ? "multithread support required"
@@ -63,7 +63,7 @@ FUNCTION Main()
          ENDIF
       ELSE
          ? "accept socket request"
-         hb_threadDetach( hb_threadStart( @ServeClient(), hSocket ) )
+         hb_threadStart( @ServeClient(), hSocket )
       ENDIF
       IF Inkey() == K_ESC
          ? "quitting - esc pressed"
@@ -150,19 +150,6 @@ FUNCTION Unmask( cBytes, nOpcode )
       cheader = HTMLHEADER
    ENDCASE
 
-   APPEND BLANK
-   IF log->( RLock() )
-      log->complete  := lComplete
-      log->opcode    := nOpcode
-      log->masked    := .T.
-      log->frlength  := nFrameLen
-      log->paylength := nLength
-      log->maskkey   := cMask
-      log->DATA      := cBytes
-      log->header    := cHeader
-      log->( dbUnlock() )
-   ENDIF
-
 RETURN cBytes
 
 // ----------------------------------------------------------------//
@@ -230,15 +217,19 @@ FUNCTION ServeClient( hSocket )
    LOCAL cRequest, cBuffer := Space( 4096 ), nLen, nOpcode
    LOCAL hResp := { => }, hReq := { => }
    LOCAL cUser := ''
+   LOCAL nUserTyping := 0
    LOCAL nMillis := hb_MilliSeconds()
-   LOCAL hUser := { => }
 
    hb_socketRecv( hSocket, @cBuffer,,, 1024 )
    HandShaking( hSocket, RTrim( cBuffer ) )
 
    ? "new client connected"
 
-   USE log SHARED
+   dbUseArea( .F., "DBFCDX", "./data/users", "users", .T. )
+
+   users->( dbSetOrder( 1 ) )
+
+   ErrorBlock( {| oError | CloseClient( cUser, hSocket ) } )
 
    WHILE .T.
       cRequest = ""
@@ -256,63 +247,132 @@ FUNCTION ServeClient( hSocket )
       END
 
       IF ! Empty( cRequest )
+
          cRequest := UnMask( cRequest, @nOpcode )
          hb_jsonDecode( cRequest, @hReq )
 
-         IF hReq[ 'type' ] == 'login'
-            cUser := hReq[ 'value' ]
-            ? 'user ', cUser, ' connected'
+         IF Empty( cUser )
+
+            cUser := AllTrim( hReq[ 'user' ] )
+
          ENDIF
 
-         IF !Empty( cUser )
-            hUsers[ cUser ][ 'online' ] := .T.
-            hUsers[ cUser ][ 'name' ] := cUser
+         IF hReq[ 'type' ] == 'exit'
 
-            IF hReq[ 'type' ] == 'typingstate'
-               IF hReq[ 'value' ] == 1
-                  hUsers[ cUser ][ 'typing' ] := .T.
-               ELSE
-                  hUsers[ cUser ][ 'typing' ] := .F.
-               ENDIF
-            ENDIF
+            CloseClient( cUser, hSocket )
 
-            IF (  hb_MilliSeconds() > ( nMillis + 2000 ) )
-               nMillis = hb_MilliSeconds()
-               cHtml1 := ''
-               cHtml2 := ''
-               FOR EACH hUser in hUsers
-                  IF hUser[ 'online' ]
-                     cHtml1 += hUser[ 'name' ] + ' is online<br>'
-                  ENDIF
-                  IF hUser[ 'typing' ]
-                     cHtml2 += hUser[ 'name' ] + ' is typing<br>'
-                  ENDIF
-               NEXT
-               hResp[ 'users' ] = cHtml1
-               hResp[ 'typing' ] = cHtml2
+         ENDIF
 
-               hb_socketSend( hSocket, Mask( hb_jsonEncode( hResp, .T. ) ) )
+         IF hReq[ 'type' ] == 'typingstate'
 
-               IF hReq[ 'type' ] == 'exit'
-                  hUsers[ cUser ][ 'online' ] := .F.
-                  hb_socketSend( hSocket, Mask( "", OPC_CLOSE ) )   // close handShake
-               ENDIF
+            nUserTyping := hReq[ 'value' ]
+
+            DO WHILE !users->( RLock() )
+            ENDDO
+
+            IF nUserTyping == 1
+
+               users->cActive := "1"
+            ELSE
+
+               users->cActive := "0"
 
             ENDIF
 
          ENDIF
-      END
 
-      ? "close socket"
-      IF hb_HHasKey( hUsers, hUsers[ cUser ][ 'online' ] )
-         hUsers[ cUser ][ 'online' ] := .F.
-         hUsers[ cUser ][ 'typing' ] := .F.
       ENDIF
-      hb_socketShutdown( hSocket )
-      hb_socketClose( hSocket )
 
-   END
+      IF (  hb_MilliSeconds() > ( nMillis + 1000 ) ) .AND. Len( cUser ) != 0
+         nMillis = hb_MilliSeconds()
+         users->( dbSeek( cUser, .F. ) )
+
+         IF !Found()
+
+            APPEND BLANK
+            users->user = cUser
+
+         ENDIF
+
+         DO WHILE !users->( RLock() )
+         ENDDO
+
+         users->cLogin := "1"
+
+         IF nUserTyping == 1
+
+            users->cActive := "1"
+         ELSE
+
+            users->cActive := "0"
+
+         ENDIF
+
+         // get users online and users typing
+         users->( dbGoTop() )
+         cHtml := 'Usuarios conectados:<br>'
+         nTyping := 0
+         cTyping := ''
+         nOnline := 0
+
+         DO WHILE !users->( Eof() )
+
+            IF ( users->cLogin == "1" )
+               nOnline++
+               cHtml += '<li>' + hb_eol()
+               cHtml += AllTrim( Upper( users->user ) ) + '<br>'
+               cHtml += '</li>' + hb_eol()
+
+               IF users->cActive == "1" .AND. users->user != cUser
+                  nTyping++
+
+                  IF nTyping > 3
+                     cTyping := 'Varios usuarios escribiendo...'
+                  ELSE
+                     cTyping += iif( nTyping != 1, ', ', '' ) + users->user
+                  ENDIF
+
+               ENDIF
+            ENDIF
+
+            users->( dbSkip() )
+
+         ENDDO
+
+         hResp[ 'users' ] = cHtml
+         hResp[ 'typing' ] = iif( nTyping != 0, iif( nTyping != 3, iif( nTyping == 1, cTyping + " esta ", cTyping + " estan " ) + " escribiendo...", cTyping ), '' )
+         hResp[ 'type' ] = 'updusersdata'
+         hb_socketSend( hSocket, Mask( hb_jsonEncode( hResp, .T. ) ) )
+
+      ENDIF
+   ENDDO
 
 RETURN NIL
 
+
+FUNCTION CloseClient( cUser, hSocket )
+
+   IF Len( cUser ) != 0
+
+      users->( dbSeek( cUser, .F. ) )
+
+      IF Found()
+
+         DO WHILE !users->( RLock() )
+         ENDDO
+
+         users->cLogin := "0"
+         users->cActive := "0"
+
+      ENDIF
+
+   ENDIF
+   ? "User ", cUser, " disconnected"
+
+   hb_socketShutdown( hSocket )
+   hb_socketClose( hSocket )
+
+   QUIT
+
+RETURN
 // ----------------------------------------------------------------//
